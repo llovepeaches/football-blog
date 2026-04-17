@@ -1,0 +1,70 @@
+name: Deploy to Tencent Cloud
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  # 腾讯云服务器配置（在 GitHub Secrets 中设置）
+  SERVER_HOST: ${{ secrets.SERVER_HOST }}
+  SERVER_USER: ${{ secrets.SERVER_USER }}
+  SERVER_PORT: ${{ secrets.SERVER_PORT || '22' }}
+  # 部署路径
+  DEPLOY_PATH: /opt/football-blog
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Deploy to Tencent Cloud
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT || '22' }}
+          source: '.next,public,package*.json,Dockerfile,docker-compose.yml,nginx.conf,posts'
+          target: ${{ env.DEPLOY_PATH }}
+          strip_components: 0
+          overwrite: true
+
+      - name: Restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT || '22' }}
+          script: |
+            cd ${{ env.DEPLOY_PATH }}
+            
+            # 确保目录存在
+            mkdir -p posts public
+            
+            # 重建并重启容器
+            docker-compose down
+            docker-compose build --no-cache
+            docker-compose up -d
+            
+            # 清理旧镜像
+            docker image prune -f
+            
+            echo "✅ 部署完成！"
+            echo "🌐 访问地址: http://${{ secrets.SERVER_HOST }}"
