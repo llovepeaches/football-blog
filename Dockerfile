@@ -8,7 +8,8 @@ WORKDIR /app
 
 # 先复制依赖文件，利用 Docker 缓存层
 COPY package*.json ./
-RUN npm ci --only=production
+# 构建阶段需要 devDependencies（tailwindcss/postcss 等），不加 --only=production
+RUN npm ci
 
 # 复制项目文件
 COPY . .
